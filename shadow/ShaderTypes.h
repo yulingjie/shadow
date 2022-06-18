@@ -44,7 +44,8 @@ typedef struct
 {
     matrix_float4x4 projectionMatrix;
     matrix_float4x4 modelViewMatrix;
-    
+    matrix_float4x4 shadowOrthographicMatrix;
+    matrix_float4x4 shadowModelViewMatrix;
     // binn
     vector_float3 uKd;
     vector_float3 uKs;
@@ -59,15 +60,34 @@ typedef struct
     
     
 }AAPLPointLight;
+
+typedef enum AAPLVertexIndices
+{
+    AAPLVertexIndexVertices = 0,
+    AAPLVertexIndexAspectRatio = 1,
+} AAPLVertexIndices;
 typedef enum AAPLTextureIndices
 {
     AAPLTextureIndexBaseColor = 0,
     AAPLTextureIndexSpecular  = 1,
     AAPLTextureIndexNormal    = 2,
-    
+    AAPLTextureIndexColor     = 3,
+    AAPLTextureIndexShadowMap = 4,
     AAPLNumTextureIndices
 } AAPLTextureIndices;
 
+
+typedef struct
+{
+    vector_float2 position;
+    vector_float4 color;
+} AAPLSimpleVertex;
+
+typedef struct
+{
+    vector_float2 position;
+    vector_float2 texcoord;
+} AAPLTextureVertex;
 
 
 #endif /* ShaderTypes_h */

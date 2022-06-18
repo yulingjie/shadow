@@ -24,6 +24,8 @@
 @property bool MoveCameraUp;
 @property bool MoveCameraDown;
 
+@property (nonatomic, readonly, nullable, weak) MTKView* view;
+
 
 @end
 

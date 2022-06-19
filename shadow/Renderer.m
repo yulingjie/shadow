@@ -480,8 +480,11 @@ static const size_t kAlignedUniformsSize = (sizeof(Uniforms) & ~0xFF) + 0x100;
         uniforms->uKs = (vector_float3){0.05, 0.05, 0.05};
         uniforms->uKd = (vector_float3){0, 0, 0};
         
-        
-        uniforms->shadowOrthographicMatrix = matrix_ortho_left_hand(-20, 20, -15, 15, -10, 30);
+        matrix_float4x4 shadowScale = matrix4x4_scale(0.5f, -0.5f, 1.0);
+        matrix_float4x4 shadowTranslate = matrix4x4_translation(0.5, 0.5, 0);
+        matrix_float4x4 shadowTransform = matrix_multiply(shadowTranslate, shadowScale);
+        uniforms->shadowFlipMatrix = shadowTransform;
+        uniforms->shadowOrthographicMatrix =  matrix_ortho_left_hand(-20, 20, -15, 15, -10, 30);
         matrix_float4x4 shadowViewMatrix = matrix_look_at_left_hand(_lightPos, targetPos, up);
         uniforms->shadowModelViewMatrix = shadowViewMatrix;
     }

@@ -42,7 +42,8 @@ vertex ColorInOut vertexShader(Vertex in [[stage_in]],
     out.texCoord = in.texCoord;
     out.normal = in.normal;
     out.worldPosition = uniforms.modelViewMatrix * position;
-    float4 shadow_coord = (uniforms.shadowOrthographicMatrix * uniforms.shadowModelViewMatrix * position);
+    float4 shadow_coord = (uniforms.shadowFlipMatrix * uniforms.shadowOrthographicMatrix * uniforms.shadowModelViewMatrix * position);
+    //out.shadow_uv = (float2(-shadow_coord.x,-shadow_coord.y) + float2(1.0,1.0))/2.0;
     out.shadow_uv = shadow_coord.xy;
     out.shadow_depth = half(shadow_coord.z);
     return out;
@@ -87,10 +88,10 @@ fragment float4 fragmentShader(ColorInOut in [[stage_in]],
                                     mip_filter::none,
                                     address::clamp_to_edge);
     float visibility = 1.0;
-    half4 shadowSample = shadowMap.sample(shadowSampler, (-in.shadow_uv + float2(1.0,1.0)) /2.0 );
+    half4 shadowSample = shadowMap.sample(shadowSampler, in.shadow_uv);
     
-    //return float4(shadowSample);
-    if(shadowSample.z < in.shadow_depth - 0.005)
+   
+    if(shadowSample.z < in.shadow_depth -0.0015)
     {
         visibility = 0.0;
     }

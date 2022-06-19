@@ -46,6 +46,7 @@ typedef struct
     matrix_float4x4 modelViewMatrix;
     matrix_float4x4 shadowOrthographicMatrix;
     matrix_float4x4 shadowModelViewMatrix;
+    matrix_float4x4 shadowFlipMatrix;
     // binn
     vector_float3 uKd;
     vector_float3 uKs;

@@ -14,7 +14,7 @@
 #import "ShaderTypes.h"
 
 using namespace metal;
-
+#define NUM_SAMPLES 20
 typedef struct
 {
     float3 position [[attribute(VertexAttributePosition)]];
@@ -31,6 +31,46 @@ typedef struct
     float2 texCoord;
     float3 normal;
 } ColorInOut;
+
+float rand_2to1(vector_float2 uv)
+{
+    const float a = 12.9898;
+    const float b = 78.233;
+    const float c= 43758.5453;
+    float dt = dot(uv.xy, vector_float2(a,b));
+    float PI = M_PI_F;
+    float sn = modf(dt, PI);
+    return fract(sin(sn) * c);
+}
+float rand_1to1(float x)
+{
+    return fract(sin(x)* 10000.0);
+}
+
+
+void uniformDiskSamples(const vector_float2 randomSeed,
+                         vector_float2 possionSample[])
+{
+    
+    float randNum = rand_2to1(randomSeed);
+    float sampleX = rand_1to1(randNum);
+    float sampleY = rand_1to1(sampleX);
+    
+    float angle = sampleX * M_PI_2_F;
+    float radius = sqrt(sampleY);
+    
+    for(int i = 0; i< NUM_SAMPLES; ++i)
+    {
+        possionSample[i] = vector_float2(radius*cos(angle), radius*sin(angle));
+        sampleX = rand_1to1(sampleY);
+        sampleY = rand_1to1(sampleX);
+        
+        angle = sampleX * M_PI_2_F;
+        radius = sqrt(sampleY);
+    }
+}
+
+
 
 vertex ColorInOut vertexShader(Vertex in [[stage_in]],
                                constant Uniforms & uniforms [[ buffer(BufferIndexUniforms) ]])
@@ -72,6 +112,38 @@ fragment float4 fragmentShader_Normal(ColorInOut in[[stage_in]],
   
     return float4(colorSample);
 }
+float PCF(texture2d<half> shadowMap, vector_float2 shadow_uv, float shadow_depth)
+{
+    constexpr sampler shadowSampler(coord::normalized, filter::linear, mip_filter::none,address::clamp_to_edge);
+    vector_float2 possionSample[NUM_SAMPLES];
+    uniformDiskSamples(shadow_uv, possionSample);
+    float visibility = 0.0f;
+    int totalNum = NUM_SAMPLES;
+    for(int i = 0; i < totalNum; ++i)
+    {
+        vector_float2 uv = shadow_uv + possionSample[i]/ 70.0f;
+        half4 shadowSample = shadowMap.sample(shadowSampler,uv);
+        if(shadowSample.z >= shadow_depth - 0.015)
+        {
+            visibility += 1.0f;
+        }
+    }
+    visibility /= totalNum;
+    return visibility;
+}
+float NormalShadowMap(texture2d<half> shadowMap, vector_float2 shadow_uv, float shadow_depth)
+{
+    constexpr sampler shadowSampler(coord::normalized, filter::linear, mip_filter::none,address::clamp_to_edge);
+    float visibility = 1.0;
+    half4 shadowSample = shadowMap.sample(shadowSampler, shadow_uv);
+    
+   
+    if(shadowSample.z < shadow_depth -0.0015)
+    {
+        visibility = 0.0;
+    }
+    return visibility;
+}
 fragment float4 fragmentShader(ColorInOut in [[stage_in]],
                                constant Uniforms & uniforms [[ buffer(BufferIndexUniforms) ]],
                                texture2d<half> colorMap     [[ texture(AAPLTextureIndexBaseColor) ]],
@@ -83,18 +155,9 @@ fragment float4 fragmentShader(ColorInOut in [[stage_in]],
                                    min_filter::linear);
   
     half4 colorSample   = colorMap.sample(colorSampler, in.texCoord.xy);
-    constexpr sampler shadowSampler(coord::normalized,
-                                    filter::linear,
-                                    mip_filter::none,
-                                    address::clamp_to_edge);
-    float visibility = 1.0;
-    half4 shadowSample = shadowMap.sample(shadowSampler, in.shadow_uv);
-    
    
-    if(shadowSample.z < in.shadow_depth -0.0015)
-    {
-        visibility = 0.0;
-    }
+    float visibility = PCF(shadowMap, in.shadow_uv, in.shadow_depth);
+  
     float3 color = float3(colorSample.xyz);
     
     float3 ambient = 0.05 * color;
@@ -156,3 +219,5 @@ fragment float4 textureFragmentShader(TexturePipelineRasterizerData in [[stage_i
     
     return colorSample;
 }
+
+

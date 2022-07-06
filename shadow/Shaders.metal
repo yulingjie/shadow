@@ -57,9 +57,10 @@ void uniformDiskSamples(const vector_float2 randomSeed,
     float sampleY = rand_1to1(sampleX);
     
     float angle = sampleX * M_PI_2_F;
-    float radius = sqrt(sampleY);
-    
-    for(int i = 0; i< NUM_SAMPLES; ++i)
+    float radius = sqrt(sampleY) ;
+    int totalNum = NUM_SAMPLES ;
+    totalNum = max(totalNum, 1);
+    for(int i = 0; i< totalNum; ++i)
     {
         possionSample[i] = vector_float2(radius*cos(angle), radius*sin(angle));
         sampleX = rand_1to1(sampleY);
@@ -112,30 +113,34 @@ fragment float4 fragmentShader_Normal(ColorInOut in[[stage_in]],
   
     return float4(colorSample);
 }
-float PCF(texture2d<half> shadowMap, vector_float2 shadow_uv, float shadow_depth)
+float PCF(texture2d<float> shadowMap, vector_float2 shadow_uv, float shadow_depth, float filter_size)
 {
     constexpr sampler shadowSampler(coord::normalized, filter::linear, mip_filter::none,address::clamp_to_edge);
+    
+    filter_size = clamp(filter_size, 0.0f, 1.0f);
+    
     vector_float2 possionSample[NUM_SAMPLES];
     uniformDiskSamples(shadow_uv, possionSample);
     float visibility = 0.0f;
-    int totalNum = NUM_SAMPLES;
-    for(int i = 0; i < totalNum; ++i)
+    
+   
+    for(int i = 0; i < NUM_SAMPLES; ++i)
     {
-        vector_float2 uv = shadow_uv + possionSample[i]/ 70.0f;
-        half4 shadowSample = shadowMap.sample(shadowSampler,uv);
+        vector_float2 uv = shadow_uv + possionSample[i]/ 80.0 * filter_size;
+        float4 shadowSample = shadowMap.sample(shadowSampler,uv);
         if(shadowSample.z >= shadow_depth - 0.015)
         {
             visibility += 1.0f;
         }
     }
-    visibility /= totalNum;
+    visibility /= NUM_SAMPLES;
     return visibility;
 }
-float NormalShadowMap(texture2d<half> shadowMap, vector_float2 shadow_uv, float shadow_depth)
+float NormalShadowMap(texture2d<float> shadowMap, vector_float2 shadow_uv, float shadow_depth)
 {
     constexpr sampler shadowSampler(coord::normalized, filter::linear, mip_filter::none,address::clamp_to_edge);
     float visibility = 1.0;
-    half4 shadowSample = shadowMap.sample(shadowSampler, shadow_uv);
+    float4 shadowSample = shadowMap.sample(shadowSampler, shadow_uv);
     
    
     if(shadowSample.z < shadow_depth -0.0015)
@@ -144,11 +149,68 @@ float NormalShadowMap(texture2d<half> shadowMap, vector_float2 shadow_uv, float 
     }
     return visibility;
 }
+
+float findBlocker(texture2d<float> shadowMap, vector_float2 shadow_uv, float zReceiver,vector_float2 possionSample[NUM_SAMPLES])
+{
+    
+    
+    constexpr sampler shadowSampler(coord::normalized, filter::linear, mip_filter::none,address::clamp_to_edge
+                                    );
+    
+    constexpr vector_float2 texelSize = vector_float2(1.0/2048, 1.0/2048);
+    float r = 0.00001f;
+    float avz = 0.0f;
+    int count = 0;
+    
+    for(int i = 0;i < NUM_SAMPLES; ++i)
+    {
+        vector_float2 uv = shadow_uv + possionSample[i] * texelSize;
+        float4 shadowSample = shadowMap.sample(shadowSampler, uv);
+        half z = shadowSample.z;
+        if(z  < zReceiver - 0.002)
+        {
+            avz += z;
+            count ++;
+        }
+    }
+    if(count > 0)
+    {
+        avz /= count;
+        return avz;
+    }
+    return 1.0f;
+}
+float PCSS(texture2d<float> shadowMap, vector_float2 shadow_uv, float shadow_depth)
+{
+    constexpr sampler shadowSampler(coord::normalized, filter::linear, mip_filter::none,address::clamp_to_edge);
+    vector_float2 possionSample[NUM_SAMPLES];
+    uniformDiskSamples(shadow_uv, possionSample);
+    float zOcculuder = findBlocker(shadowMap, shadow_uv, shadow_depth, possionSample);
+    
+    float penumbra = max(shadow_depth - zOcculuder, 0.0)/ zOcculuder * 50.0;
+   // float penumbra = (shadow_depth - zOcculuder)*10/ zOcculuder;
+   // penumbra = clamp(penumbra, 0.0f, 1.0f);
+    float visibility = 0.0f;
+    constexpr vector_float2 texelSize = vector_float2(1.0/2048, 1.0/2048);
+    
+    for(int i = 0; i < NUM_SAMPLES; ++i)
+    {
+        vector_float2 uv = shadow_uv + possionSample[i]*texelSize * penumbra;
+        float4 shadowSample = shadowMap.sample(shadowSampler,uv);
+        if(shadowSample.z >= shadow_depth -0.001 )
+        {
+            visibility += 1.0f;
+        }
+    }
+    visibility /= NUM_SAMPLES;
+    return visibility;
+}
+
 fragment float4 fragmentShader(ColorInOut in [[stage_in]],
                                constant Uniforms & uniforms [[ buffer(BufferIndexUniforms) ]],
                                texture2d<half> colorMap     [[ texture(AAPLTextureIndexBaseColor) ]],
                                device AAPLPointLight *light_data [[buffer(BufferIndexLightsData)]],
-                               texture2d<half> shadowMap [[texture(AAPLTextureIndexShadowMap)]])
+                               texture2d<float> shadowMap [[texture(AAPLTextureIndexShadowMap)]])
 {
     constexpr sampler colorSampler(mip_filter::linear,
                                    mag_filter::linear,
@@ -156,8 +218,9 @@ fragment float4 fragmentShader(ColorInOut in [[stage_in]],
   
     half4 colorSample   = colorMap.sample(colorSampler, in.texCoord.xy);
    
-    float visibility = PCF(shadowMap, in.shadow_uv, in.shadow_depth);
-  
+    //float visibility = NormalShadowMap(shadowMap, in.shadow_uv, in.shadow_depth);
+    //float visibility = PCF(shadowMap, in.shadow_uv, in.shadow_depth, 1.0);
+    float visibility = PCSS(shadowMap,in.shadow_uv, in.shadow_depth);
     float3 color = float3(colorSample.xyz);
     
     float3 ambient = 0.05 * color;
